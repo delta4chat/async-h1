@@ -100,7 +100,7 @@ where
     let (body_read_sender, body_read_receiver) = async_channel::bounded(1);
 
     if Some(CONTINUE_HEADER_VALUE) == req.header(EXPECT).map(|h| h.as_str()) {
-        async_global_executor::spawn(async move {
+        smolscale2::spawn(async move {
             // If the client expects a 100-continue header, spawn a
             // task to wait for the first read attempt on the body.
             if let Ok(()) = body_read_receiver.recv().await {

@@ -1,10 +1,10 @@
 [package]
-name = "async-h1"
-version = "2.3.3"
+name = "async-h1b"
+version = "3.0.0"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/http-rs/async-h1"
-documentation = "https://docs.rs/async-h1"
-description = "Asynchronous HTTP 1.1 parser."
+repository = "https://github.com/delta4chat/async-h1"
+documentation = "https://docs.rs/async-h1b"
+description = "hitdns fork of Asynchronous HTTP 1.1 parser."
 keywords = ["async", "http", "stream", "parser", "http1"]
 categories = [
   "asynchronous",
@@ -20,7 +20,12 @@ edition = "2018"
 [dependencies]
 async-channel = "1.5.1"
 async-dup = "1.2.2"
-async-global-executor = "2.3.1"
+
+#async-global-executor = "2.3.1"
+
+smolscale2 = { version = "0.5.8", features = ["preempt"] }
+#smolscale2 = { path = "../smolscale", features = ["preempt"] }
+
 async-io = "1.13.0"
 futures-lite = "1.13.0"
 http-types = { version = "2.9.0", default-features = false }
