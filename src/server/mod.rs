@@ -3,8 +3,16 @@
 use async_io::Timer;
 use futures_lite::io::{self, AsyncRead as Read, AsyncWrite as Write};
 use futures_lite::prelude::*;
-use http_types::headers::{CONNECTION, UPGRADE};
+/*=======
+use async_std::future::{timeout, Future, TimeoutError};
+use async_std::io::{self, Read, Write};
+>>>>>>> origin/v3*/
+
 use http_types::upgrade::Connection;
+use http_types::{
+    headers::{CONNECTION, UPGRADE},
+    Version,
+};
 use http_types::{Request, Response, StatusCode};
 use std::{future::Future, marker::PhantomData, time::Duration};
 mod body_reader;
@@ -19,12 +27,42 @@ pub use encode::Encoder;
 pub struct ServerOptions {
     /// Timeout to handle headers. Defaults to 60s.
     headers_timeout: Option<Duration>,
+    default_host: Option<String>,
+}
+
+impl ServerOptions {
+    /// constructs a new ServerOptions with default settings
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// sets the timeout by which the headers must have been received
+    pub fn with_headers_timeout(mut self, headers_timeout: Duration) -> Self {
+        self.headers_timeout = Some(headers_timeout);
+        self
+    }
+
+    /// Sets the default http 1.0 host for this server. If no host
+    /// header is provided on an http/1.0 request, this host will be
+    /// used to construct the Request Url.
+    ///
+    /// If this is not provided, the server will respond to all
+    /// http/1.0 requests with status `505 http version not
+    /// supported`, whether or not a host header is provided.
+    ///
+    /// The default value for this is None, and as a result async-h1
+    /// is by default an http-1.1-only server.
+    pub fn with_default_host(mut self, default_host: &str) -> Self {
+        self.default_host = Some(default_host.into());
+        self
+    }
 }
 
 impl Default for ServerOptions {
     fn default() -> Self {
         Self {
             headers_timeout: Some(Duration::from_secs(60)),
+            default_host: None,
         }
     }
 }
@@ -32,11 +70,11 @@ impl Default for ServerOptions {
 /// Accept a new incoming HTTP/1.1 connection.
 ///
 /// Supports `KeepAlive` requests by default.
-pub async fn accept<RW, F, Fut>(io: RW, endpoint: F) -> http_types::Result<()>
+pub async fn accept<RW, F, Fut>(io: RW, endpoint: F) -> crate::Result<()>
 where
     RW: Read + Write + Clone + Send + Sync + Unpin + 'static,
     F: Fn(Request) -> Fut,
-    Fut: Future<Output = http_types::Result<Response>>,
+    Fut: Future<Output = Response>,
 {
     Server::new(io, endpoint).accept().await
 }
@@ -48,11 +86,11 @@ pub async fn accept_with_opts<RW, F, Fut>(
     io: RW,
     endpoint: F,
     opts: ServerOptions,
-) -> http_types::Result<()>
+) -> crate::Result<()>
 where
     RW: Read + Write + Clone + Send + Sync + Unpin + 'static,
     F: Fn(Request) -> Fut,
-    Fut: Future<Output = http_types::Result<Response>>,
+    Fut: Future<Output = Response>,
 {
     Server::new(io, endpoint).with_opts(opts).accept().await
 }
@@ -80,7 +118,7 @@ impl<RW, F, Fut> Server<RW, F, Fut>
 where
     RW: Read + Write + Clone + Send + Sync + Unpin + 'static,
     F: Fn(Request) -> Fut,
-    Fut: Future<Output = http_types::Result<Response>>,
+    Fut: Future<Output = Response>,
 {
     /// builds a new server
     pub fn new(io: RW, endpoint: F) -> Self {
@@ -99,20 +137,20 @@ where
     }
 
     /// accept in a loop
-    pub async fn accept(&mut self) -> http_types::Result<()> {
+    pub async fn accept(&mut self) -> crate::Result<()> {
         while ConnectionStatus::KeepAlive == self.accept_one().await? {}
         Ok(())
     }
 
     /// accept one request
-    pub async fn accept_one(&mut self) -> http_types::Result<ConnectionStatus>
+    pub async fn accept_one(&mut self) -> crate::Result<ConnectionStatus>
     where
         RW: Read + Write + Clone + Send + Sync + Unpin + 'static,
         F: Fn(Request) -> Fut,
-        Fut: Future<Output = http_types::Result<Response>>,
+        Fut: Future<Output = Response>,
     {
         // Decode a new request, timing out if this takes longer than the timeout duration.
-        let fut = decode(self.io.clone());
+        let fut = decode(self.io.clone(), &self.opts);
 
         let (req, mut body) = if let Some(timeout_duration) = self.opts.headers_timeout {
             match fut
@@ -142,29 +180,35 @@ where
         let connection_header_is_upgrade = connection_header_as_str
             .split(',')
             .any(|s| s.trim().eq_ignore_ascii_case("upgrade"));
-        let mut close_connection = connection_header_as_str.eq_ignore_ascii_case("close");
+
+        let mut close_connection = if req.version() == Some(Version::Http1_0) {
+            !connection_header_as_str.eq_ignore_ascii_case("keep-alive")
+        } else {
+            connection_header_as_str.eq_ignore_ascii_case("close")
+        };
 
         let upgrade_requested = has_upgrade_header && connection_header_is_upgrade;
 
         let method = req.method();
 
         // Pass the request to the endpoint and encode the response.
-        let mut res = (self.endpoint)(req).await?;
+        let mut response = (self.endpoint)(req).await;
 
-        close_connection |= res
+        close_connection |= response
             .header(CONNECTION)
             .map(|c| c.as_str().eq_ignore_ascii_case("close"))
             .unwrap_or(false);
 
-        let upgrade_provided = res.status() == StatusCode::SwitchingProtocols && res.has_upgrade();
+        let upgrade_provided =
+            response.status() == StatusCode::SwitchingProtocols && response.has_upgrade();
 
         let upgrade_sender = if upgrade_requested && upgrade_provided {
-            Some(res.send_upgrade())
+            Some(response.send_upgrade())
         } else {
             None
         };
 
-        let mut encoder = Encoder::new(res, method);
+        let mut encoder = Encoder::new(response, method);
 
         let bytes_written = io::copy(&mut encoder, &mut self.io).await?;
         log::trace!("wrote {} response bytes", bytes_written);

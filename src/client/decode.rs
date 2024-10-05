@@ -1,22 +1,27 @@
 use futures_lite::io::{AsyncRead as Read, BufReader};
 use futures_lite::prelude::*;
-use http_types::{ensure, ensure_eq, format_err};
+
 use http_types::{
-    headers::{CONTENT_LENGTH, DATE, TRANSFER_ENCODING},
+    //ensure, ensure_eq,
+    format_err
+};
+use http_types::content::ContentLength;
+use http_types::{
+    headers::{DATE, TRANSFER_ENCODING},
     Body, Response, StatusCode,
 };
 
 use std::convert::TryFrom;
 
-use crate::chunked::ChunkedDecoder;
 use crate::date::fmt_http_date;
+use crate::{chunked::ChunkedDecoder, Error};
 use crate::{MAX_HEADERS, MAX_HEAD_LENGTH};
 
 const CR: u8 = b'\r';
 const LF: u8 = b'\n';
 
 /// Decode an HTTP response on the client.
-pub async fn decode<R>(reader: R) -> http_types::Result<Response>
+pub async fn decode<R>(reader: R) -> crate::Result<Option<Response>>
 where
     R: Read + Unpin + Send + Sync + 'static,
 {
@@ -31,16 +36,15 @@ where
         // No more bytes are yielded from the stream.
 
         match (bytes_read, buf.len()) {
-            (0, 0) => return Err(format_err!("connection closed")),
-            (0, _) => return Err(format_err!("empty response")),
+            (0, 0) => return Err(format_err!("connection closed").into()),
+            (0, _) => return Err(format_err!("empty response").into()),
             _ => {}
         }
 
         // Prevent CWE-400 DDOS with large HTTP Headers.
-        ensure!(
-            buf.len() < MAX_HEAD_LENGTH,
-            "Head byte length should be less than 8kb"
-        );
+        if buf.len() >= MAX_HEAD_LENGTH {
+            return Err(Error::HeadersTooLong);
+        }
 
         // We've hit the end delimiter of the stream.
         let idx = buf.len() - 1;
@@ -54,17 +58,23 @@ where
 
     // Convert our header buf into an httparse instance, and validate.
     let status = httparse_res.parse(&buf)?;
-    ensure!(!status.is_partial(), "Malformed HTTP head");
+    if status.is_partial() {
+        return Err(Error::PartialHead);
+    }
 
-    let code = httparse_res.code;
-    let code = code.ok_or_else(|| format_err!("No status code found"))?;
+    let code = httparse_res.code.ok_or(Error::MissingStatusCode)?;
 
     // Convert httparse headers + body into a `http_types::Response` type.
-    let version = httparse_res.version;
-    let version = version.ok_or_else(|| format_err!("No version found"))?;
-    ensure_eq!(version, 1, "Unsupported HTTP version");
+    let version = httparse_res.version.ok_or(Error::MissingVersion)?;
 
-    let mut res = Response::new(StatusCode::try_from(code)?);
+    if version != 1 {
+        return Err(Error::UnsupportedVersion(version));
+    }
+
+    let status_code =
+        StatusCode::try_from(code).map_err(|_| Error::UnrecognizedStatusCode(code))?;
+    let mut res = Response::new(status_code);
+
     for header in httparse_res.headers.iter() {
         res.append_header(header.name, std::str::from_utf8(header.value)?);
     }
@@ -74,13 +84,13 @@ where
         res.insert_header(DATE, &format!("date: {}\r\n", date)[..]);
     }
 
-    let content_length = res.header(CONTENT_LENGTH);
+    let content_length =
+        ContentLength::from_headers(&res).map_err(|_| Error::MalformedHeader("content-length"))?;
     let transfer_encoding = res.header(TRANSFER_ENCODING);
 
-    ensure!(
-        content_length.is_none() || transfer_encoding.is_none(),
-        "Unexpected Content-Length header"
-    );
+    if content_length.is_some() && transfer_encoding.is_some() {
+        return Err(Error::UnexpectedHeader("content-length"));
+    }
 
     if let Some(encoding) = transfer_encoding {
         if encoding.last().as_str() == "chunked" {
@@ -89,16 +99,16 @@ where
             res.set_body(Body::from_reader(reader, None));
 
             // Return the response.
-            return Ok(res);
+            return Ok(Some(res));
         }
     }
 
     // Check for Content-Length.
-    if let Some(len) = content_length {
-        let len = len.last().as_str().parse::<usize>()?;
-        res.set_body(Body::from_reader(reader.take(len as u64), Some(len)));
+    if let Some(content_length) = content_length {
+        let len = content_length.len();
+        res.set_body(Body::from_reader(reader.take(len), Some(len as usize)));
     }
 
     // Return the response.
-    Ok(res)
+    Ok(Some(res))
 }
