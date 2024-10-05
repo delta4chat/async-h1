@@ -173,30 +173,45 @@ where
 
         let req_version = req.version();
 
-        let has_upgrade_header = req.header(UPGRADE).is_some();
+
         let connection_header =
             req.header(CONNECTION)
             .map(|connection| connection.as_str())
-            .unwrap_or(
+            .unwrap_or("")
+            .to_string();
+
+        let res_header_keepalive = {
+            let c = connection_header.to_ascii_lowercase();
+            if c == "keep-alive" || c.contains("keep-alive,") {
+                "keep-alive"
+            } else if c == "close" || c.contains("close") {
+                "close"
+            } else {
                 match req_version {
                     Some(Version::Http1_1) => "keep-alive",
                     Some(Version::Http1_0) => "close",
                     _ => { unreachable!(); }
                 }
-            )
-            .to_string();
+            }
+        };
 
-        let connection_header_is_upgrade =
-            connection_header.split(',')
-            .any(|s| s.trim().eq_ignore_ascii_case("upgrade"));
-
+        let close_connection =
+            match res_header_keepalive {
+                "close" => true,
+                _ => false
+            };
+        /*
         let mut close_connection =
             if req_version == Some(Version::Http1_0) {
                 ! connection_header.eq_ignore_ascii_case("keep-alive")
             } else {
                 connection_header.eq_ignore_ascii_case("close")
             };
+        */
 
+
+        let connection_header_is_upgrade = connection_header.split(',').any(|s| s.trim().eq_ignore_ascii_case("upgrade"));
+        let has_upgrade_header = req.header(UPGRADE).is_some();
         let upgrade_requested = has_upgrade_header && connection_header_is_upgrade;
 
         let method = req.method();
@@ -204,12 +219,34 @@ where
         // Pass the request to the endpoint and encode the response.
         let mut response = (self.endpoint)(req).await;
         response.set_version(req_version);
-        response.insert_header(CONNECTION, &connection_header);
 
+        if let Some(hc) = response.header(CONNECTION) {
+            let tmp: Vec<_> = hc.iter().collect();
+            if tmp.len() != 1 {
+                // is multi "Connection" headers can be properly handled by clients?
+                // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Connection#syntax
+                return Err(crate::Error::UnexpectedHeader("should not have multi 'Connection' header"));
+            }
+
+            let mut new_hc = hc.last().as_str().to_string();
+            if new_hc.is_empty() {
+                new_hc = res_header_keepalive.to_string();
+            } else {
+                new_hc.push(',');
+                new_hc.push(' ');
+                new_hc.extend(res_header_keepalive.chars());
+            }
+            response.insert_header(CONNECTION, new_hc);
+        } else {
+            response.insert_header(CONNECTION, res_header_keepalive);
+        }
+
+        /*
         close_connection |=
             response.header(CONNECTION)
             .map(|c| c.as_str().eq_ignore_ascii_case("close"))
             .unwrap_or(false);
+        */
 
         let upgrade_provided =
             response.status() == StatusCode::SwitchingProtocols && response.has_upgrade();
