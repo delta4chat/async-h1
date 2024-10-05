@@ -172,20 +172,24 @@ where
         };
 
         let has_upgrade_header = req.header(UPGRADE).is_some();
-        let connection_header_as_str = req
-            .header(CONNECTION)
+        let connection_header =
+            req.header(CONNECTION)
             .map(|connection| connection.as_str())
-            .unwrap_or("");
+            .unwrap_or("")
+            .to_string();
 
-        let connection_header_is_upgrade = connection_header_as_str
-            .split(',')
+        let connection_header_is_upgrade =
+            connection_header.split(',')
             .any(|s| s.trim().eq_ignore_ascii_case("upgrade"));
 
-        let mut close_connection = if req.version() == Some(Version::Http1_0) {
-            !connection_header_as_str.eq_ignore_ascii_case("keep-alive")
-        } else {
-            connection_header_as_str.eq_ignore_ascii_case("close")
-        };
+        let req_version = req.version();
+
+        let mut close_connection =
+            if req_version == Some(Version::Http1_0) {
+                ! connection_header.eq_ignore_ascii_case("keep-alive")
+            } else {
+                connection_header.eq_ignore_ascii_case("close")
+            };
 
         let upgrade_requested = has_upgrade_header && connection_header_is_upgrade;
 
@@ -193,9 +197,11 @@ where
 
         // Pass the request to the endpoint and encode the response.
         let mut response = (self.endpoint)(req).await;
+        response.set_version(req_version);
+        response.insert_header(CONNECTION, &connection_header);
 
-        close_connection |= response
-            .header(CONNECTION)
+        close_connection |=
+            response.header(CONNECTION)
             .map(|c| c.as_str().eq_ignore_ascii_case("close"))
             .unwrap_or(false);
 

@@ -83,7 +83,17 @@ impl Encoder {
         let mut head = Vec::with_capacity(128);
         let reason = self.response.status().canonical_reason();
         let status = self.response.status();
-        write!(head, "HTTP/1.1 {} {}\r\n", status, reason)?;
+
+        use http_types::Version;
+        match self.response.version() {
+            Some(Version::Http1_1) => {
+                write!(head, "HTTP/1.1 {} {}\r\n", status, reason)?;
+            },
+            Some(Version::Http1_0) => {
+                write!(head, "HTTP/1.0 {} {}\r\n", status, reason)?;
+            },
+            _ => { unreachable!(); }
+        }
 
         self.finalize_headers();
         let mut headers = self.response.iter().collect::<Vec<_>>();
