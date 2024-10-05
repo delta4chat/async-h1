@@ -220,27 +220,6 @@ where
         let mut response = (self.endpoint)(req).await;
         response.set_version(req_version);
 
-        if let Some(hc) = response.header(CONNECTION) {
-            let tmp: Vec<_> = hc.iter().collect();
-            if tmp.len() != 1 {
-                // is multi "Connection" headers can be properly handled by clients?
-                // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Connection#syntax
-                return Err(crate::Error::UnexpectedHeader("should not have multi 'Connection' header"));
-            }
-
-            let mut new_hc = hc.last().as_str().to_string();
-            if new_hc.is_empty() {
-                new_hc = res_header_keepalive.to_string();
-            } else {
-                new_hc.push(',');
-                new_hc.push(' ');
-                new_hc.extend(res_header_keepalive.chars());
-            }
-            response.insert_header(CONNECTION, new_hc);
-        } else {
-            response.insert_header(CONNECTION, res_header_keepalive);
-        }
-
         /*
         close_connection |=
             response.header(CONNECTION)
@@ -250,6 +229,29 @@ where
 
         let upgrade_provided =
             response.status() == StatusCode::SwitchingProtocols && response.has_upgrade();
+
+        if ! upgrade_provided {
+            if let Some(hc) = response.header(CONNECTION) {
+                let tmp: Vec<_> = hc.iter().collect();
+                if tmp.len() != 1 {
+                    // is multi "Connection" headers can be properly handled by clients?
+                    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Connection#syntax
+                    return Err(crate::Error::UnexpectedHeader("should not have multi 'Connection' header"));
+                }
+
+                let mut new_hc = hc.last().as_str().to_string();
+                if new_hc.is_empty() {
+                    new_hc = res_header_keepalive.to_string();
+                } else {
+                    new_hc.push(',');
+                    new_hc.push(' ');
+                    new_hc.extend(res_header_keepalive.chars());
+                }
+                response.insert_header(CONNECTION, new_hc);
+            } else {
+                response.insert_header(CONNECTION, res_header_keepalive);
+            }
+        }
 
         let upgrade_sender = if upgrade_requested && upgrade_provided {
             Some(response.send_upgrade())
