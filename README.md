@@ -1,7 +1,7 @@
-<h1 align="center">async-h1</h1>
+<h1 align="center">async-h1b</h1>
 <div align="center">
   <strong>
-    Asynchronous HTTP/1.1 parser.
+    hitdns fork of Asynchronous HTTP/1.1 parser.
   </strong>
 </div>
 
@@ -9,17 +9,17 @@
 
 <div align="center">
   <!-- Crates version -->
-  <a href="https://crates.io/crates/async-h1">
-    <img src="https://img.shields.io/crates/v/async-h1.svg?style=flat-square"
+  <a href="https://crates.io/crates/async-h1b">
+    <img src="https://img.shields.io/crates/v/async-h1b.svg?style=flat-square"
     alt="Crates.io version" />
   </a>
   <!-- Downloads -->
-  <a href="https://crates.io/crates/async-h1">
-    <img src="https://img.shields.io/crates/d/async-h1.svg?style=flat-square"
+  <a href="https://crates.io/crates/async-h1b">
+    <img src="https://img.shields.io/crates/d/async-h1b.svg?style=flat-square"
       alt="Download" />
   </a>
   <!-- docs.rs docs -->
-  <a href="https://docs.rs/async-h1">
+  <a href="https://docs.rs/async-h1b">
     <img src="https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square"
       alt="docs.rs docs" />
   </a>
@@ -27,15 +27,15 @@
 
 <div align="center">
   <h3>
-    <a href="https://docs.rs/async-h1">
+    <a href="https://docs.rs/async-h1b">
       API Docs
     </a>
     <span> | </span>
-    <a href="https://github.com/http-rs/async-h1/releases">
+    <a href="https://github.com/delta4chat/async-h1/releases">
       Releases
     </a>
     <span> | </span>
-    <a href="https://github.com/http-rs/async-h1/blob/main/.github/CONTRIBUTING.md">
+    <a href="https://github.com/delta4chat/async-h1/blob/main/.github/CONTRIBUTING.md">
       Contributing
     </a>
   </h3>
@@ -43,7 +43,7 @@
 
 ## Installation
 ```sh
-$ cargo add async-h1
+$ cargo add async-h1b
 ```
 
 ## Safety
@@ -52,12 +52,12 @@ This crate uses ``#![forbid(unsafe_code)]`` to ensure everything is implemented 
 
 ## Minimum Supported Rust Version
 
-Given the rapidly-improving nature of async Rust, `async-h1` only
+Given the rapidly-improving nature of async Rust, `async-h1b` only
 guarantees it will work on the latest stable Rust compiler. Currently
-`async-h1` compiles on `rustc 1.40.0` and above, but we reserve the
+`async-h1b` compiles on `rustc 1.40.0` and above, but we reserve the
 right to upgrade the minimum Rust version outside of major
 releases. If upgrading stable compiler versions is an issue we
-recommend pinning the version of `async-h1`.
+recommend pinning the version of `async-h1b`.
 
 ## Contributing
 Want to join us? Check out our ["Contributing" guide][contributing] and take a
@@ -66,9 +66,9 @@ look at some of these issues:
 - [Issues labeled "good first issue"][good-first-issue]
 - [Issues labeled "help wanted"][help-wanted]
 
-[contributing]: https://github.com/http-rs/async-h1/blob/main/.github/CONTRIBUTING.md
-[good-first-issue]: https://github.com/http-rs/async-h1/labels/good%20first%20issue
-[help-wanted]: https://github.com/http-rs/async-h1/labels/help%20wanted
+[contributing]: https://github.com/delta4chat/async-h1/blob/main/.github/CONTRIBUTING.md
+[good-first-issue]: https://github.com/delta4chat/async-h1/labels/good%20first%20issue
+[help-wanted]: https://github.com/delta4chat/async-h1/labels/help%20wanted
 
 ## License
 
