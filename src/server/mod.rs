@@ -171,18 +171,24 @@ where
             }
         };
 
+        let req_version = req.version();
+
         let has_upgrade_header = req.header(UPGRADE).is_some();
         let connection_header =
             req.header(CONNECTION)
             .map(|connection| connection.as_str())
-            .unwrap_or("")
+            .unwrap_or(
+                match req_version {
+                    Some(Version::Http1_1) => "keep-alive",
+                    Some(Version::Http1_0) => "close",
+                    _ => { unreachable!(); }
+                }
+            )
             .to_string();
 
         let connection_header_is_upgrade =
             connection_header.split(',')
             .any(|s| s.trim().eq_ignore_ascii_case("upgrade"));
-
-        let req_version = req.version();
 
         let mut close_connection =
             if req_version == Some(Version::Http1_0) {
