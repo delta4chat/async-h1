@@ -15,7 +15,7 @@ http-types = "1.0.0"
 libfuzzer-sys = "0.3"
 futures-io = "0.3"
 
-[dependencies.async-h1]
+[dependencies.async-h1b]
 path = ".."
 
 # Prevent this from interfering with workspaces

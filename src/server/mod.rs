@@ -138,7 +138,20 @@ where
 
     /// accept in a loop
     pub async fn accept(&mut self) -> crate::Result<()> {
-        while ConnectionStatus::KeepAlive == self.accept_one().await? {}
+        loop {
+            let result = self.accept_one().await;
+            match result {
+                Ok(status) => {
+                    if status != ConnectionStatus::KeepAlive {
+                        break;
+                    }
+                },
+                Err(err) => {
+                    eprintln!("async-h1 accept_one returns Err: {err:#?}");
+                    return Err(err);
+                }
+            }
+        }
         Ok(())
     }
 

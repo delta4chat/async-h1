@@ -16,6 +16,7 @@ use crate::{chunked::ChunkedDecoder, ServerOptions};
 use crate::{MAX_HEADERS, MAX_HEAD_LENGTH};
 
 const LF: u8 = b'\n';
+const SPACE: u8 = b' ';
 
 const CONTINUE_HEADER_VALUE: &str = "100-continue";
 const CONTINUE_RESPONSE: &[u8] = b"HTTP/1.1 100 Continue\r\n\r\n";
@@ -29,33 +30,54 @@ pub async fn decode<IO>(
 where
     IO: Read + Write + Clone + Send + Sync + Unpin + 'static,
 {
-    let mut reader = BufReader::new(io.clone());
+    let mut reader = BufReader::with_capacity(MAX_HEAD_LENGTH, io.clone()); // Prevent CWE-400 DoS with large HTTP Headers but without LF char.
     let mut buf = Vec::new();
     let mut headers = [httparse::EMPTY_HEADER; MAX_HEADERS];
     let mut httparse_req = httparse::Request::new(&mut headers);
 
+    let mut first_line = true;
     // Keep reading bytes from the stream until we hit the end of the stream.
     loop {
         let bytes_read = reader.read_until(LF, &mut buf).await?;
+
         // No more bytes are yielded from the stream.
         if bytes_read == 0 {
             return Ok(None);
         }
 
-        // Prevent CWE-400 DDOS with large HTTP Headers.
+        // Prevent CWE-400 DoS with large HTTP Headers.
         if buf.len() >= MAX_HEAD_LENGTH {
             return Err(Error::HeadersTooLong);
         }
 
+        if first_line {
+            first_line = false;
+
+            let mut split = buf.split(|b| { b == &SPACE });
+            let method = split.next().ok_or(Error::MissingMethod)?;
+
+            let path = split.next().ok_or(Error::RequestPathMissing)?;
+            let path = non_ascii_to_percent(path);
+
+            let mut parts = vec![method, &path];
+            for part in split {
+                parts.push(part);
+            }
+
+            buf = parts.join(&SPACE);
+        }
+
         // We've hit the end delimiter of the stream.
-        let idx = buf.len() - 1;
-        if idx >= 3 && &buf[idx - 3..=idx] == b"\r\n\r\n" {
+        if buf.ends_with(b"\r\n\r\n") || buf.ends_with(b"\n\n") {
             break;
         }
     }
 
+
     // Convert our header buf into an httparse instance, and validate.
-    let status = httparse_req.parse(&buf)?;
+    let status = httparse_req.parse(&buf)?; /////
+
+    eprintln!("a");
 
     if status.is_partial() {
         return Err(Error::PartialHead);
@@ -139,6 +161,20 @@ where
     }
 }
 
+fn non_ascii_to_percent(path: &[u8]) -> Vec<u8> {
+    const WHITELIST: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_/.,:;@$![]()`|~+*\\";
+
+    let mut out = Vec::new();
+    for byte in path.iter() {
+        if WHITELIST.contains(byte) {
+            out.push(*byte);
+        } else {
+            out.extend(format!("%{byte:02x}").as_bytes());
+        }
+    }
+    out
+}
+
 fn url_from_httparse_req(
     req: &httparse::Request<'_, '_>,
     default_host: Option<&str>,
@@ -156,11 +192,11 @@ fn url_from_httparse_req(
     };
 
     if path.starts_with("http://") || path.starts_with("https://") {
-        Ok(Url::parse(path)?)
+        Ok(Url::parse(&path)?)
     } else if path.starts_with('/') {
-        Ok(Url::parse(&format!("http://{}{}", host, path))?)
+        Ok(Url::parse(&format!("http://{}{}", host, &path))?)
     } else if req.method.unwrap().eq_ignore_ascii_case("connect") {
-        Ok(Url::parse(&format!("http://{}/", path))?)
+        Ok(Url::parse(&format!("http://{}/", &path))?)
     } else {
         Err(Error::UnexpectedURIFormat)
     }

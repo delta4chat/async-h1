@@ -47,7 +47,7 @@ impl AsyncWrite for RwWrapper {
 
 fuzz_target!(|request: &[u8]| {
     let stream = RwWrapper::new(request.to_vec());
-    async_std::task::block_on(async_h1::accept("http://localhost", stream, |req| async {
+    async_std::task::block_on(async_h1b::accept("http://localhost", stream, |req| async {
         let mut res = http_types::Response::new(http_types::StatusCode::Ok);
         res.set_body(req);
         Ok(res)
