@@ -147,7 +147,7 @@ where
                     }
                 },
                 Err(err) => {
-                    eprintln!("async-h1 accept_one returns Err: {err:#?}");
+                    log::warn!("async-h1 accept_one returns Err: {err:#?}");
                     return Err(err);
                 }
             }

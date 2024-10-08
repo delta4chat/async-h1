@@ -73,11 +73,8 @@ where
         }
     }
 
-
     // Convert our header buf into an httparse instance, and validate.
-    let status = httparse_req.parse(&buf)?; /////
-
-    eprintln!("a");
+    let status = httparse_req.parse(&buf)?;
 
     if status.is_partial() {
         return Err(Error::PartialHead);
