@@ -57,7 +57,7 @@ where
             let method = split.next().ok_or(Error::MissingMethod)?;
 
             let path = split.next().ok_or(Error::RequestPathMissing)?;
-            let path = non_ascii_to_percent(path);
+            let path = non_ascii_printable_to_percent_encoded(path);
 
             let mut parts = vec![method, &path];
             for part in split {
@@ -161,15 +161,16 @@ where
     }
 }
 
-fn non_ascii_to_percent(path: &[u8]) -> Vec<u8> {
-    const WHITELIST: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_/.,:;@$![]()`|~+*\\";
+fn non_ascii_printable_to_percent_encoded(path: &[u8]) -> Vec<u8> {
+    // python: [chr(i) for i in range(256) if chr(i).isascii() and chr(i).isprintable()]
+    const WHITELIST: &[u8] = b" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
 
     let mut out = Vec::new();
     for byte in path.iter() {
         if WHITELIST.contains(byte) {
             out.push(*byte);
         } else {
-            out.extend(format!("%{byte:02x}").as_bytes());
+            out.extend(format!("%{byte:02X}").as_bytes());
         }
     }
     out
